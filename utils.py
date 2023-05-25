@@ -1,33 +1,19 @@
+import os
 import torch
 import torchvision
 from dataset import niiDataset, KfoldDataset
 from torch.utils.data import DataLoader
 import numpy as np
 from sklearn.model_selection import KFold
-from torch.utils.data import Subset
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def save_checkpoint(state, filename="unet_checkpoint.pth.tar"):
+    filename = os.path.join(ROOT_DIR, filename)
     torch.save(state, filename)
 
 def load_checkpoint(checkpoint, model):
     model.load_state_dict(checkpoint["state_dict"])
-
-def custom_bce_with_logits_loss(input, target):
-    sigmoid_input = torch.sigmoid(input)
-    bce_loss = -(target * torch.log(sigmoid_input) + (1 - target) * torch.log(1 - sigmoid_input))
-    return bce_loss.mean()
-
-def dice_loss(input, target, eps=1e-7):
-    input = torch.sigmoid(input)
-    intersection = torch.sum(input * target)
-    union = torch.sum(input * input) + torch.sum(target * target)
-    dice = (2. * intersection + eps) / (union + eps)
-    return 1 - dice
-
-def combined_loss(input, target, alpha=0.5):
-    bce_loss = custom_bce_with_logits_loss(input, target)
-    dice = dice_loss(input, target)
-    return alpha * bce_loss + (1 - alpha) * dice
 
 def get_loaders(full_dataset, batch_size, train_transform, val_transform,
                 num_workers=4, pin_memory=False):
@@ -36,8 +22,8 @@ def get_loaders(full_dataset, batch_size, train_transform, val_transform,
     train_loaders = []
     val_loaders = []
 
-    IMG_DIR = "F:/sarcopenia-unet/data/npy/ct_t12"
-    MASK_DIR = "F:/sarcopenia-unet/data/npy/t12"
+    IMG_DIR = os.path.join(ROOT_DIR, "data/IMG/ct_t4")
+    MASK_DIR = os.path.join(ROOT_DIR, "data/MASK/t4")
 
     for fold, (train_indices, val_indices) in enumerate(kfold.split(full_dataset)):
 
@@ -59,7 +45,7 @@ def check_accuracy(loader, model, loss_fn, device="cuda"):
     model.eval()
     dice_all = []
     fold_change = []
-    test_loss = 0.0  # 新增：用于累加测试损失
+    test_loss = 0.0
 
     with torch.no_grad():
         for x, y in loader:
@@ -67,7 +53,6 @@ def check_accuracy(loader, model, loss_fn, device="cuda"):
             y = y.float().to(device).unsqueeze(1)
             preds = torch.sigmoid(model(x))
 
-            # 新增：计算并累加测试损失
             batch_loss = loss_fn(preds, y)
             test_loss += batch_loss.item()
 
@@ -81,23 +66,19 @@ def check_accuracy(loader, model, loss_fn, device="cuda"):
                 z = (preds == 1).sum() / (y == 1).sum()
             fold_change.append(float(z))
 
-    print(f"Dice Score: {dice_score / len(loader)}")
-    print(f"Test Loss: {test_loss / len(loader)}")  # 新增：输出平均测试损失
-    np.save('F:/sarcopenia-unet/output/fold_change.npy', np.array(fold_change))
-    np.save('F:/sarcopenia-unet/output/dice_all.npy', np.array(dice_all))
+    print(f"Train Dice: {dice_score / len(loader)}")
+    print(f"Train Loss: {test_loss / len(loader)}")  # 新增：输出平均测试损失
+    np.save(os.path.join(ROOT_DIR, 'output/fold_change.npy'), np.array(fold_change))
+    np.save(os.path.join(ROOT_DIR, 'output/dice_all.npy'), np.array(dice_all))
     model.train()
 
-def save_predictions_as_imgs(
-    loader, model, folder="F:/sarcopenia-unet/", device="cuda"
-):
+def save_predictions_as_imgs(loader, model, folder="output/images/", device="cuda"):
     model.eval()
     for idx, (x, y) in enumerate(loader):
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
             preds = (preds > 0.5).float()
-        torchvision.utils.save_image(
-            preds, f"{folder}/pred_{idx}.png"
-        )
+        torchvision.utils.save_image(preds, os.path.join(ROOT_DIR, f"{folder}/pred_{idx}.png"))
         
     model.train()

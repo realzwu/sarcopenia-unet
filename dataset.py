@@ -1,6 +1,7 @@
 import os
 from torch.utils.data import Dataset
 import numpy as np
+import SimpleITK as sitk
 
 class niiDataset(Dataset):
     def __init__(self, image_dir, mask_dir, transform=None):
@@ -15,7 +16,7 @@ class niiDataset(Dataset):
     def __getitem__(self, index):
         img_path = os.path.join(self.image_dir, self.images[index])
         mask_path = os.path.join(self.mask_dir,self.images[index])
-        image = np.load(img_path) 
+        image = np.load(img_path)
         mask = np.load(mask_path)
 
         if self.transform is not None:
@@ -24,7 +25,6 @@ class niiDataset(Dataset):
             mask = augmentations["mask"]
 
         return image, mask
-
 
 class KfoldDataset(niiDataset):
     def __init__(self, image_dir, mask_dir, kfold_indices, transform=None):
@@ -37,3 +37,4 @@ class KfoldDataset(niiDataset):
 
     def __getitem__(self, index):
         return super().__getitem__(index)
+
